@@ -4,9 +4,8 @@ from flask_cors import CORS
 import mysql.connector
 
 app = Flask(__name__)
-CORS(app)  # Permite peticiones CORS desde Netlify
+CORS(app)
 
-# Configuración con credenciales exactas de Aiven
 db_config = {
     'host': os.environ.get('DB_HOST', 'muraliasql-muralia.g.aivencloud.com'),
     'port': int(os.environ.get('DB_PORT', 14433)),
@@ -23,7 +22,6 @@ def get_db_connection():
 # RUTAS DE LA API
 # -------------------------------------------------------------
 
-# 1. Obtener murales aprobados y sus comentarios
 @app.route('/api/murals', methods=['GET'])
 def get_murals():
     try:
@@ -48,7 +46,6 @@ def get_murals():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 2. Enviar propuesta de mural
 @app.route('/api/propose', methods=['POST'])
 def propose_mural():
     data = request.json
@@ -78,7 +75,6 @@ def propose_mural():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 3. Registrar nuevo usuario
 @app.route('/api/register', methods=['POST'])
 def register():
     data = request.json
@@ -90,8 +86,10 @@ def register():
         if cursor.fetchone():
             return jsonify({"error": "El correo ya está registrado"}), 400
             
+        # Si pide cuenta de artista, lo registramos inicialmente como 'aficionado' con solicitud de verificación
         query = "INSERT INTO usuarios (nombre_tag, email, password_hash, rol) VALUES (%s, %s, %s, %s)"
-        values = (data['nombre_tag'], data['email'], data['password'], data.get('rol', 'aficionado'))
+        initial_role = 'aficionado' # Los administradores deberán aprobar el estatus de 'artista'
+        values = (data['nombre_tag'], data['email'], data['password'], initial_role)
         
         cursor.execute(query, values)
         conn.commit()
@@ -104,13 +102,12 @@ def register():
             "id_usuario": new_id,
             "nombre_tag": data['nombre_tag'],
             "email": data['email'],
-            "rol": data.get('rol', 'aficionado'),
+            "rol": initial_role,
             "nivel_puntos": 0
         }), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 4. Iniciar sesión
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json
@@ -135,7 +132,6 @@ def login():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 5. Agregar un comentario
 @app.route('/api/comments', methods=['POST'])
 def add_comment():
     data = request.json
@@ -153,7 +149,6 @@ def add_comment():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 6. Obtener propuestas pendientes (Admin)
 @app.route('/api/admin/pending', methods=['GET'])
 def get_pending():
     try:
@@ -167,7 +162,33 @@ def get_pending():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# 7. Aprobar propuesta (Admin)
+@app.route('/api/admin/users', methods=['GET'])
+def get_users_admin():
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id_usuario, nombre_tag, email, rol, nivel_puntos FROM usuarios ORDER BY id_usuario DESC")
+        users = cursor.fetchall()
+        cursor.close()
+        conn.close()
+        return jsonify(users), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# Endpoint para que el Admin verifique a un artista
+@app.route('/api/admin/verify_artist/<int:id_usuario>', methods=['PUT'])
+def verify_artist(id_usuario):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE usuarios SET rol = 'artista' WHERE id_usuario = %s", (id_usuario,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"message": "Artista verificado exitosamente"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/admin/approve/<int:id_mural>', methods=['PUT'])
 def approve_mural(id_mural):
     try:
