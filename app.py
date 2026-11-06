@@ -32,7 +32,7 @@ def get_murals():
         
         for mural in murals:
             cursor.execute("""
-                SELECT c.texto, c.fecha, u.nombre_tag AS author 
+                SELECT c.id_comentario, c.texto, c.fecha, u.nombre_tag AS author 
                 FROM comentarios c 
                 JOIN usuarios u ON c.id_usuario = u.id_usuario 
                 WHERE c.id_mural = %s 
@@ -86,9 +86,8 @@ def register():
         if cursor.fetchone():
             return jsonify({"error": "El correo ya está registrado"}), 400
             
-        # Si pide cuenta de artista, lo registramos inicialmente como 'aficionado' con solicitud de verificación
         query = "INSERT INTO usuarios (nombre_tag, email, password_hash, rol) VALUES (%s, %s, %s, %s)"
-        initial_role = 'aficionado' # Los administradores deberán aprobar el estatus de 'artista'
+        initial_role = 'aficionado'
         values = (data['nombre_tag'], data['email'], data['password'], initial_role)
         
         cursor.execute(query, values)
@@ -149,6 +148,50 @@ def add_comment():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+# NUEVA RUTA: Eliminar cuenta de usuario
+@app.route('/api/users/<int:id_usuario>', methods=['DELETE'])
+def delete_user(id_usuario):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM comentarios WHERE id_usuario = %s", (id_usuario,))
+        cursor.execute("DELETE FROM usuarios WHERE id_usuario = %s", (id_usuario,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"message": "Cuenta eliminada exitosamente"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# NUEVA RUTA: Admin borra comentario
+@app.route('/api/admin/comments/<int:id_comentario>', methods=['DELETE'])
+def delete_comment(id_comentario):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM comentarios WHERE id_comentario = %s", (id_comentario,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"message": "Comentario eliminado"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# NUEVA RUTA: Admin borra mural
+@app.route('/api/admin/murals/<int:id_mural>', methods=['DELETE'])
+def delete_mural(id_mural):
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM comentarios WHERE id_mural = %s", (id_mural,))
+        cursor.execute("DELETE FROM murales WHERE id_mural = %s", (id_mural,))
+        conn.commit()
+        cursor.close()
+        conn.close()
+        return jsonify({"message": "Mural eliminado exitosamente"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/api/admin/pending', methods=['GET'])
 def get_pending():
     try:
@@ -175,7 +218,6 @@ def get_users_admin():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-# Endpoint para que el Admin verifique a un artista
 @app.route('/api/admin/verify_artist/<int:id_usuario>', methods=['PUT'])
 def verify_artist(id_usuario):
     try:
